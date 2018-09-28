@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<script src="//cdn.jsdelivr.net/npm/phaser@3.12.0/dist/phaser.min.js"></script>
+<script src="socketio-client.js"></script>
+<script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+<style>
+    *{
+        padding: 0;
+        margin: 0;
+    }
+    body{
+        background-color:gray;
+    }
+    .button{
+       
+        height: 100px;
+        width: 100px;
+        display: inline-flex;
+        text-align: center;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+    .button::before{
+        display:block;
+  content:" ";
+  position:absolute;
+  z-index:-1;
+  top:0;
+  left:0;
+  right:0;
+  bottom:0;
+  opacity:0.5;
+  transition: opacity 0.4s ease-in-out;
+    }
+  .button:hover::before{
+        opacity: 1;
+    }
+    #move{
+        height: 100px;
+        width: 100px;
+        position: relative;
+       
+    }
+#move::before{
+    background-color: blue;
+}
+#attack::before{
+    background-color: red;
+}
+#apply::before{
+    background-color: green;
+}
+#DD{
+    position: absolute;
+    width: 200px;
+    height: 20px;
+    text-align: center;
+    opacity: 0.5;
+    bottom:20%;
+    color:white;
+    border-radius: 5%;
+    left:calc( 50% - 200px );
+    background-color:black;
+}
+
+</style>
+<body>
+
+<div id="ui" class="dd"> </div>
+<script src="index.js"></script>
+
+
+
+</body>
+</html>
