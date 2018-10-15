@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "alwaysStrict": true,
+        "baseUrl": ".",
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "module": "esnext",
+        "moduleResolution": "node",
+        "target": "ESNext",
+        "lib": [
+            "dom",
+            "es2017"
+        ]
+    },
+    "exclude": [
+        "static",
+        "build",
+        "dist",
+        "node_modules"
+    ]
+}
