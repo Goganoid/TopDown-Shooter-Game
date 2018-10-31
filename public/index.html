@@ -56,25 +56,49 @@
 #apply::before{
     background-color: green;
 }
-#DD{
-    position: absolute;
-    width: 200px;
-    height: 20px;
+.inf{
+    background-color: rgb(133, 128, 128);
+    color:black;
     text-align: center;
-    opacity: 0.5;
-    bottom:20%;
-    color:white;
-    border-radius: 5%;
-    left:calc( 50% - 200px );
-    background-color:black;
+    position: absolute;
+    /* transform: translate(50%,50%); */
+    width: 500px;
+    height: 50px;
+    margin-left: auto;
+    margin-right: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
-
+.shop{
+    display: none;
+    background-color: rgb(133, 128, 128);
+    color:black;
+    text-align: center;
+    position: absolute;
+    /* transform: translate(50%,50%); */
+    width: 70%;
+    height: 70%;
+    margin-left: auto;
+    margin-right: auto;
+    left: 0;
+    right: 0;
+    bottom: 15%;
+    top: 15%;    
+}
 </style>
 <body>
 
 <!-- <canvas id="world"></canvas> -->
 <script src="index.js"></script>
+<div class="shop">
+<button>Buy Something</button>
+</div>
+<div class="inf">
+<div class="health"></div>
+<div class="money"></div>
 
+</div>
 
 
 </body>

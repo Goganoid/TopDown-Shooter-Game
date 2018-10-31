@@ -1,4 +1,3 @@
-
 var config = {
     type: Phaser.AUTO,
     width: 1920,
@@ -18,42 +17,8 @@ var config = {
 };
 
 var socket=io();
-// var actions={};
-// var Bullet = new Phaser.Class({
-//     Extends: Phaser.GameObjects.Image,
-//     initialize:
-//     //  Bullet Constructor
-//     function Bullet (scene)
-//         {
-//             Phaser.GameObjects.Image.call(this, scene, 0, 0, 'bullet');
-//             this.setSize(12, 12, true);
-//         },
-//     update: function (time, delta)
-//     {
-//         socket.emit("updateBullet");
-//     }
 
-// });
-// class Bullet extends Phaser.GameObjects.Sprite {
 
-//     constructor (scene, x, y,id)
-//     {
-//         super(scene, x, y);
-//         this.id=id;
-//         this.setTexture('bullet');
-//         this.setPosition(x, y);
-//         socket.on()
-//     }
-
-//     preUpdate (time, delta)
-//     {
-//         super.preUpdate(time, delta);
-
-//         socket.emit("updateBullet",this.id);
-
-//     }
-
-// }
 
 var game = new Phaser.Game(config);
 function preload ()
@@ -61,7 +26,7 @@ function preload ()
 
         this.load.image('sky', 'assets/sky.png');
         this.load.image('circle', 'assets/circle.png');
-        this.load.image('ground', 'assets/platform2.png');
+        this.load.image('ground', 'assets/platform100x100.png');
         this.load.image('white', 'assets/white.png');
         this.load.image('white-h', 'assets/white-h.png');
         this.load.image('bullet', 'assets/bullet.png');
@@ -75,17 +40,21 @@ function preload ()
         );
 
 }
-
+var gameObjects={players:{},bullets:{}}
+// var players={};
+var connected=true;
 var platforms,score,scoreText,gameOver,lives,reticle,prevPos,map,boxes, positionOnCollide, playerBullets,bullet,movementSpeed, player,point;
 function create(){
+    this.socket=socket;
     var self=this;
     movementSpeed=10;
     map = this.make.tilemap({ key: 'map' });
         var tiles = map.addTilesetImage('background', 'tile');
         var layer = map.createStaticLayer(0, tiles, 0, 0);
         this.matter.world.setBounds(0,0,map.widthInPixels, map.heightInPixels)
+
         this.matter.world.on('collisionstart', function (event) {
-          console.log(event.pairs[0]);
+          // console.log(event.pairs[0]);
           try {
             if(event.pairs[0].bodyA.gameObject.gameObjectType=="bullet") event.pairs[0].bodyA.gameObject.destroy()
           } catch (err) {}
@@ -94,27 +63,81 @@ function create(){
           } catch (err) {}
         });
 
-    let player= createPlayer(this);
+
+
 
     point= this.add.image(400,200, 'star')
 
-    reticle = this.add.sprite(player.x,player.y, 'reticle');
-        reticle.setOrigin(0.5, 0.5)
-    var platform = this.matter.add.sprite(400,610, 'ground');
-    platform.setStatic(true);
-    platform.setScale(2, 0.5);
-    console.log(platform.displayHeight,platform.displayWidth)
-    platform.setFriction(0.005);
+    // var platform = this.matter.add.sprite(400,610, 'ground');
+    //   platform.setStatic(true);
+    //   platform.setScale(10, 0.32);
+    //   platform.setFriction(0.005);
 
-    var camera = this.cameras.main;
+
+    socket.emit("connected");
+
+    socket.on("addPlayer",function(data){
+      console.log(data);
+      player= createPlayer(self,data);
+      reticle = self.add.sprite(player.x,player.y, 'reticle');
+        reticle.setOrigin(0.5, 0.5);
+        self  .input.mouse.disableContextMenu();
+      var camera = self.cameras.main;
         camera.startFollow(player);
         camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-
-    socket.on("sendPlayerData",function(data){
-        player.x=data.x;
-        player.y=data.y;
+      $(".health").html("100")
     });
+    socket.on("currentPlayers",function(data){
+      console.log(data);
+      console.log(socket.id);
+      if(Object.keys(data).length!==0){
 
+      Object.keys(data).forEach(function(id){
+        createPlayer(self,data[id])
+      });
+
+    }
+    });
+    socket.on("addOtherPlayer",function(data){
+      // console.log("DD/");
+      createPlayer(self,data)
+    });
+    socket.on("sendPlayerData",function(data){
+       gameObjects.players[data.id].x=data.position.x;
+       gameObjects.players[data.id].y=data.position.y;
+        });
+    socket.on("addMoney",function(data){
+      $(".money").html(data);
+    });
+    socket.on("changeHealth",function(data){
+        console.log(data)
+        $(".health").html(data)
+    });
+    socket.on("playerDied",function(data){
+      gameObjects.players[data].destroy();
+      delete gameObjects.players[data];
+    });
+    socket.on("spawnWall",function(data){
+      console.log(data);
+      console.log(Array.isArray(data))
+      if(Array.isArray(data))
+      {
+        data.forEach(function(d){
+          spawnWall(self,d.x,d.y,d.w,d.h);
+        });
+      }
+      else spawnWall(self,data.x,data.y,data.w,data.h);
+    });
+    socket.on("spawnBase",function(data){
+      console.log(data);
+      if(Array.isArray(data))
+      {
+        data.forEach(function(d){
+          spawnBase(self,d.x,d.y,d.w,d.h);
+        });
+      }
+      else spawnBase(self,data.x,data.y,data.w,data.h,radius);
+    });
     cursors = this.input.keyboard.addKeys({
               'up': Phaser.Input.Keyboard.KeyCodes.W,
               'down': Phaser.Input.Keyboard.KeyCodes.S,
@@ -122,19 +145,56 @@ function create(){
             'right': Phaser.Input.Keyboard.KeyCodes.D,
             'activate': Phaser.Input.Keyboard.KeyCodes.F
     });
+    var shootInterval;
     this.input.on("pointerdown",function(pointer){
+      // if(pointer.leftButtonDown()) socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
+      if(pointer.leftButtonDown()) {
         socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
-        console.log(point.x,point.y)
-
+        shootInterval=setInterval(()=>{
+          socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
+        },300)
+        
+      }
+        if(pointer.rightButtonDown()) socket.emit("spawnWall",{x:reticle.x,y:reticle.y});
+    });
+    this.input.on("pointerup",function(pointer){
+      if(shootInterval) clearInterval(shootInterval);
+    });
+    this.input.keyboard.on('keyup_E', function (event) {
+      // console.log("DD")
+      socket.emit("openShop");
     })
     socket.on("bulletSpawned",function(data){
         spawnBullet(self,data)
     });
+    socket.on("connect_error", function (data) {
+      console.log('connection_error');
+      connected=false;
+  });
+  socket.on("removePlayer",function(data){
+    gameObjects.players[data].destroy();
+  });
+//   socket.on('reconnect', (number) => {
+//     console.log('Reconnected to server', number);
+// });
+    // socket.on("sendBulletsData",function(data){
+    //     console.log(data);
+    //     console.log(gameObjects.bullets);
+    //     Object.keys(data).forEach(function(id){
+    //       gameObjects.bullets[id].x=data[id]
+    //     });
+    // });
+ 
+
 
 }
 
 function update(){
-    player.setVelocity(0,0)
+
+  if(player){
+    // player.setVelocity(0,0)
+    
+   
     player.rotation = Phaser.Math.Angle.Between(player.x, player.y, reticle.x, reticle.y);
     point.x=player.x+Math.cos(player.rotation)*( (player.displayWidth/2+30));
     point.y=player.y+Math.sin(player.rotation)*( (player.displayHeight/2 +30));
@@ -145,14 +205,15 @@ function update(){
         right:cursors.right.isDown,
         up:cursors.up.isDown,
         down:cursors.down.isDown
+        // leftPointer:
     });
-        if (cursors.right.isDown) player.setVelocityX(movementSpeed);
-        if (cursors.left.isDown) player.setVelocityX(-movementSpeed);
-        if (cursors.up.isDown) player.setVelocityY(-movementSpeed);
-        if (cursors.down.isDown) player.setVelocityY(movementSpeed);
+        // if (cursors.right.isDown) player.setVelocityX(movementSpeed);
+        // if (cursors.left.isDown) player.setVelocityX(-movementSpeed);
+        // if (cursors.up.isDown) player.setVelocityY(-movementSpeed);
+        // if (cursors.down.isDown) player.setVelocityY(movementSpeed);
 
   constrainReticle(reticle,player,this.cameras.main)
-
+}
 }
 
 
@@ -165,6 +226,51 @@ function constrainReticle(reticle,player,camera){
     else reticle.y=game.input.mousePointer.y
 }
 
+
+function spawnBullet(self,data){
+    bullet=self.matter.add.sprite(data.position.x,data.position.y,"bullet",null,{friction:0,restitution:1,frictionStatic:0,frictionAir:0});
+    bullet.gameObjectType="bullet";
+    bullet.setFixedRotation();
+    bullet.setSensor(true);
+    bullet.angle=data.angle;
+    // bullet.setTint(0xff0000);
+    bullet.setMass(0.1)
+    bullet.setVelocity(data.velocity.x,data.velocity.y)
+    gameObjects.bullets[data.id]=bullet
+}
+
+
+function createPlayer(self,data){
+let  player = self.matter.add.image(data.x,data.y, 'circle',null,{inertia:Infinity});
+    // player.setFriction(0.005);
+    player.setCircle();
+    player.setScale(0.1,0.1)
+    player.setOrigin(0.5,0.5);
+  if(data.team=="red") player.setTint(0xff0000)
+  gameObjects.players[data.id]=player;
+  return player;
+}
+function spawnWall(self,x,y,w,h){
+  let wall = self.matter.add.sprite(x,y, 'ground');
+  wall.setStatic(true);
+  wall.setScale(w/100, h/100);
+  wall.setFriction(0.005);
+}
+function spawnBase(self,x,y,w,h){
+  
+  let radius = self.add.image(x,y, 'tile',null);
+  // console.log(r/radius.width,r/radius.height,radius.height,radius.width,r)
+  // radius.setScale(r/radius.width,r/radius.height);
+  // radius.width=w+200;
+  radius.displayWidth=w+200;
+  radius.displayHeight=h+200;
+  // radius.height=h+200;
+  let base = self.matter.add.sprite(x,y, 'ground');
+  base.setStatic(true);
+  base.setScale(w/100, h/100);
+  base.setFriction(0.005);
+}
+
 function changeSize(object,w,h){
   if(h!=undefined){
     object.height=h;
@@ -174,23 +280,6 @@ function changeSize(object,w,h){
     object.width=w;
     object.displayWidth=w;
   }
-}
-function spawnBullet(self,data){
-    let bullet=self.matter.add.image(data.position.x,data.position.y,"bullet",null,{friction:0,restitution:1,frictionStatic:0,frictionAir:0});
-    bullet.angle=data.angle;
-    bullet.gameObjectType="bullet";
-    bullet.setFixedRotation();
-    bullet.applyForce({x:data.velocity.x,y:data.velocity.y})
-}
-
-
-function createPlayer(self){
-  player = self.matter.add.image(400,200, 'circle',null,{inertia:Infinity}).setBounce(0).setFriction(0);
-    player.setFriction(0.005);
-    player.setCircle();
-    player.setScale(0.1,0.1)
-    player.setOrigin(0.5,0.5);
-  return player;
 }
 // function create ()
 // {
