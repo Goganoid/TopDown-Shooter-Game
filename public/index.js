@@ -40,6 +40,7 @@ function preload ()
         );
 
 }
+var shopItems;
 var gameObjects={players:{},bullets:{}}
 // var players={};
 var connected=true;
@@ -66,7 +67,7 @@ function create(){
 
 
 
-    point= this.add.image(400,200, 'star')
+    
 
     // var platform = this.matter.add.sprite(400,610, 'ground');
     //   platform.setStatic(true);
@@ -76,20 +77,52 @@ function create(){
 
     socket.emit("connected");
 
+    socket.on("sendShopItems",function(data){
+      shopItems=data;
+      Object.keys(data).forEach(function(d){
+        $(".shop").append(`<button item=${d} class="shopButton" >Buy something for ${data[d].price}</button>`)
+      });
+     
+      $(".shopButton").on("click",function(){
+        let item=$(this).attr("item")
+         console.log(item,shopItems[item].price);
+         if(self.player.money>=shopItems[item].price) socket.emit("buyItem",item)
+         else console.log("no")
+       });
+    });
+
+    socket.on("addMoney",function(data){
+      $(".money").html(data);
+      self.player.money=data
+    });
+    this.input.keyboard.on('keyup_E', function (event) {
+      
+    });
+    this.input.keyboard.on('keyup', function (event) {
+      if(event.key=="1") socket.emit("numberPressed",1);
+      if(event.key=="2") socket.emit("numberPressed",2);
+      if(event.key=="e") {
+        $(".shop").toggleClass("showShop"); 
+      // socket.emit("openShop");
+      }
+    });
+    socket.on("bought",function(){
+      console.log("bought")
+    });
+    
+    
     socket.on("addPlayer",function(data){
-      console.log(data);
       player= createPlayer(self,data);
+      // point= this.add.image(400,200, 'star')
       reticle = self.add.sprite(player.x,player.y, 'reticle');
         reticle.setOrigin(0.5, 0.5);
-        self  .input.mouse.disableContextMenu();
+        self.input.mouse.disableContextMenu();
       var camera = self.cameras.main;
         camera.startFollow(player);
         camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
       $(".health").html("100")
     });
     socket.on("currentPlayers",function(data){
-      console.log(data);
-      console.log(socket.id);
       if(Object.keys(data).length!==0){
 
       Object.keys(data).forEach(function(id){
@@ -103,12 +136,13 @@ function create(){
       createPlayer(self,data)
     });
     socket.on("sendPlayerData",function(data){
-       gameObjects.players[data.id].x=data.position.x;
-       gameObjects.players[data.id].y=data.position.y;
+      let player= gameObjects.players[data.id];
+      player.x=data.position.x;
+      player.y=data.position.y;
+       player.point.x=player.x+Math.cos(data.rotation)*( (player.displayWidth/2+30))
+       player.point.y=player.y+Math.sin(data.rotation)*( (player.displayHeight/2+30))
         });
-    socket.on("addMoney",function(data){
-      $(".money").html(data);
-    });
+   
     socket.on("changeHealth",function(data){
         console.log(data)
         $(".health").html(data)
@@ -118,8 +152,6 @@ function create(){
       delete gameObjects.players[data];
     });
     socket.on("spawnWall",function(data){
-      console.log(data);
-      console.log(Array.isArray(data))
       if(Array.isArray(data))
       {
         data.forEach(function(d){
@@ -129,7 +161,6 @@ function create(){
       else spawnWall(self,data.x,data.y,data.w,data.h);
     });
     socket.on("spawnBase",function(data){
-      console.log(data);
       if(Array.isArray(data))
       {
         data.forEach(function(d){
@@ -145,67 +176,37 @@ function create(){
             'right': Phaser.Input.Keyboard.KeyCodes.D,
             'activate': Phaser.Input.Keyboard.KeyCodes.F
     });
-    var shootInterval;
     this.input.on("pointerdown",function(pointer){
-      // if(pointer.leftButtonDown()) socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
-      if(pointer.leftButtonDown()) {
-        socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
-        shootInterval=setInterval(()=>{
-          socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
-        },300)
-        
-      }
         if(pointer.rightButtonDown()) socket.emit("spawnWall",{x:reticle.x,y:reticle.y});
     });
-    this.input.on("pointerup",function(pointer){
-      if(shootInterval) clearInterval(shootInterval);
-    });
-    this.input.keyboard.on('keyup_E', function (event) {
-      // console.log("DD")
-      socket.emit("openShop");
-    })
     socket.on("bulletSpawned",function(data){
+      console.log("bulletSpawned")
         spawnBullet(self,data)
     });
     socket.on("connect_error", function (data) {
       console.log('connection_error');
       connected=false;
-  });
+    });
   socket.on("removePlayer",function(data){
+    gameObjects.players[data].point.destroy();
     gameObjects.players[data].destroy();
-  });
-//   socket.on('reconnect', (number) => {
-//     console.log('Reconnected to server', number);
-// });
-    // socket.on("sendBulletsData",function(data){
-    //     console.log(data);
-    //     console.log(gameObjects.bullets);
-    //     Object.keys(data).forEach(function(id){
-    //       gameObjects.bullets[id].x=data[id]
-    //     });
-    // });
- 
-
-
+    });
 }
 
 function update(){
-
+if(this.input.activePointer.buttons==1 && this.input.activePointer.isDown) socket.emit("spawnBullet",{x:reticle.x,y:reticle.y});
   if(player){
     // player.setVelocity(0,0)
-    
-   
     player.rotation = Phaser.Math.Angle.Between(player.x, player.y, reticle.x, reticle.y);
-    point.x=player.x+Math.cos(player.rotation)*( (player.displayWidth/2+30));
-    point.y=player.y+Math.sin(player.rotation)*( (player.displayHeight/2 +30));
+    // point.x=player.x+Math.cos(player.rotation)*( (player.displayWidth/2+30));
+    // point.y=player.y+Math.sin(player.rotation)*( (player.displayHeight/2 +30));
 
-    // point.rotation=Phaser.Math.Angle.Between(player.x, player.y, reticle.x, reticle.y);
     socket.emit("updatePLayer",{
         left:cursors.left.isDown,
         right:cursors.right.isDown,
         up:cursors.up.isDown,
-        down:cursors.down.isDown
-        // leftPointer:
+        down:cursors.down.isDown,
+        rotation:player.rotation,
     });
         // if (cursors.right.isDown) player.setVelocityX(movementSpeed);
         // if (cursors.left.isDown) player.setVelocityX(-movementSpeed);
@@ -241,13 +242,17 @@ function spawnBullet(self,data){
 
 
 function createPlayer(self,data){
-let  player = self.matter.add.image(data.x,data.y, 'circle',null,{inertia:Infinity});
+  let  player = self.matter.add.image(data.x,data.y, 'circle',null,{inertia:Infinity});
     // player.setFriction(0.005);
     player.setCircle();
     player.setScale(0.1,0.1)
     player.setOrigin(0.5,0.5);
+    player.money=0;
+  // let point= this.add.image(400,200, 'star');
+  player.point=self.add.image(data.x,data.y, 'star');
   if(data.team=="red") player.setTint(0xff0000)
   gameObjects.players[data.id]=player;
+  self.player=player;
   return player;
 }
 function spawnWall(self,x,y,w,h){
