@@ -19,7 +19,6 @@ var config = {
 var socket=io();
 
 
-
 var game = new Phaser.Game(config);
 function preload ()
 {
@@ -40,8 +39,11 @@ function preload ()
         );
 
 }
+Array.prototype.last=function(){
+  return this[this.length-1];
+}
 var shopItems;
-var gameObjects={players:{},bullets:{}}
+var gameObjects={players:{},bullets:{},walls:{}}
 // var players={};
 var connected=true;
 var platforms,score,scoreText,gameOver,lives,reticle,prevPos,map,boxes, positionOnCollide, playerBullets,bullet,movementSpeed, player,point;
@@ -55,7 +57,6 @@ function create(){
         this.matter.world.setBounds(0,0,map.widthInPixels, map.heightInPixels)
 
         this.matter.world.on('collisionstart', function (event) {
-          // console.log(event.pairs[0]);
           try {
             if(event.pairs[0].bodyA.gameObject.gameObjectType=="bullet") event.pairs[0].bodyA.gameObject.destroy()
           } catch (err) {}
@@ -67,7 +68,7 @@ function create(){
 
 
 
-    
+
 
     // var platform = this.matter.add.sprite(400,610, 'ground');
     //   platform.setStatic(true);
@@ -79,41 +80,108 @@ function create(){
 
     socket.on("sendShopItems",function(data){
       shopItems=data;
-      Object.keys(data).forEach(function(d){
-        $(".shop").append(`<button item=${d} class="shopButton" >Buy something for ${data[d].price}</button>`)
-      });
      
-      $(".shopButton").on("click",function(){
+        let pages=[Object.values(data).slice(0,6)]
+        console.log(Math.ceil(Object.keys(data).length/6,Object.keys(data).length))
+        for(let i=1;i<Math.ceil(Object.keys(data).length/6);i++){
+          pages.push(Object.values(data).slice(pages.last().length ,pages.last().length+ 6))
+        }  
+        console.log(pages)
+      // $("#page").html("0")
+      $("#page").attr("page","0")
+      Object.values(pages[0]).forEach(function(d){
+       createShopItem(d);
+      });
+
+      if(pages.length>1){
+        $(".next").on("click",function(){
+          console.log(parseInt($("#page").attr("page")),pages.length)
+          if(parseInt($("#page").attr("page"))!=pages.length-1){
+
+            $(".items").html(" ");
+              Object.values(pages[ parseInt($("#page").attr("page"))+1 ]).forEach(function(d){
+               createShopItem(d);
+              });
+              $("#page").attr("page",String(parseInt($("#page").attr("page"))+1))    
+          }
+        });
+        $(".prev").on("click",function(){
+          if(parseInt($("#page").attr("page"))!=0){
+            $(".items").html(" ");
+              Object.values(pages[ parseInt($("#page").attr("page"))-1 ]).forEach(function(d){
+               createShopItem(d)
+              });
+            $("#page").attr("page",String(parseInt($("#page").attr("page"))-1))
+          }
+        });  
+      }
+
+      $(".buy").on("click",function(){
         let item=$(this).attr("item")
-         console.log(item,shopItems[item].price);
-         if(self.player.money>=shopItems[item].price) socket.emit("buyItem",item)
-         else console.log("no")
+        console.log(shopItems[item].price,self.player.money)
+        if(self.player.money>=shopItems[item].price) socket.emit("buyItem",item)
        });
     });
+    
+
+   
 
     socket.on("addMoney",function(data){
       $(".money").html(data);
       self.player.money=data
     });
-    this.input.keyboard.on('keyup_E', function (event) {
-      
-    });
     this.input.keyboard.on('keyup', function (event) {
       if(event.key=="1") socket.emit("numberPressed",1);
       if(event.key=="2") socket.emit("numberPressed",2);
+      if(event.key=="3") socket.emit("numberPressed",3);
       if(event.key=="e") {
-        $(".shop").toggleClass("showShop"); 
-      // socket.emit("openShop");
+        $(".shop").toggleClass("showShop");
       }
     });
-    socket.on("bought",function(){
-      console.log("bought")
+    socket.on("bought",function(data){
+      $(`.slot[slot=${data.slot}]`).html(
+        `
+        <div class="num">${data.slot}</div>
+        <p>Name:${data.item.name}</p>
+        <p>Damage:${data.item.damage}</p>
+        <p>Shoot Rate:${data.item.coolDown}</p>
+        <div class="buyButton sell" item="${data.slot}">${data.item.sellPrice}$</div>
+        `
+      );
+      updateShopButtons(socket);
     });
-    
-    
+    socket.on("sold",function(data){
+      // console.log( $(`.slot[slot=${data}]`))
+      $(`.slot[slot=${data}]`).html(
+        `
+        <div class="num">${data}</div>
+        `
+      )
+    });
+
     socket.on("addPlayer",function(data){
       player= createPlayer(self,data);
-      // point= this.add.image(400,200, 'star')
+      for(let i=1;i<=data.slots;i++){
+
+        if(data.inventorySlots[i]!=undefined) $(".inventory").
+        append(
+                `<div class="slot" slot=${i}>
+                <div class="num">${i}</div>
+                <p>Name:${data.inventorySlots[i].name}</p>
+                <p>Damage:${data.inventorySlots[i].damage}</p>
+                <p>Shoot Rate:${data.inventorySlots[i].coolDown}</p>
+                <div class="buyButton sell" item="${i}">${data.inventorySlots[i].sellPrice}$</div>
+                </div>`
+              )
+        else $(".inventory").
+        append(
+                `<div class="slot" slot=${i}>
+                <div class="num">${i}</div>
+                </div>`
+              )
+      }
+      updateShopButtons(socket)
+
       reticle = self.add.sprite(player.x,player.y, 'reticle');
         reticle.setOrigin(0.5, 0.5);
         self.input.mouse.disableContextMenu();
@@ -142,23 +210,23 @@ function create(){
        player.point.x=player.x+Math.cos(data.rotation)*( (player.displayWidth/2+30))
        player.point.y=player.y+Math.sin(data.rotation)*( (player.displayHeight/2+30))
         });
-   
+
     socket.on("changeHealth",function(data){
-        console.log(data)
+        // console.log(data)
         $(".health").html(data)
     });
-    socket.on("playerDied",function(data){
-      gameObjects.players[data].destroy();
-      delete gameObjects.players[data];
-    });
+    // socket.on("playerDied",function(data){
+    //   gameObjects.players[data].destroy();
+    //   delete gameObjects.players[data];
+    // });
     socket.on("spawnWall",function(data){
       if(Array.isArray(data))
       {
         data.forEach(function(d){
-          spawnWall(self,d.x,d.y,d.w,d.h);
+          spawnWall(self,d.x,d.y,d.w,d.h,d.id);
         });
       }
-      else spawnWall(self,data.x,data.y,data.w,data.h);
+      else spawnWall(self,data.x,data.y,data.w,data.h,data.id);
     });
     socket.on("spawnBase",function(data){
       if(Array.isArray(data))
@@ -180,7 +248,6 @@ function create(){
         if(pointer.rightButtonDown()) socket.emit("spawnWall",{x:reticle.x,y:reticle.y});
     });
     socket.on("bulletSpawned",function(data){
-      console.log("bulletSpawned")
         spawnBullet(self,data)
     });
     socket.on("connect_error", function (data) {
@@ -190,7 +257,14 @@ function create(){
   socket.on("removePlayer",function(data){
     gameObjects.players[data].point.destroy();
     gameObjects.players[data].destroy();
+    delete gameObjects.players[data];
     });
+  socket.on("destroyWall",function(data){
+    console.log(gameObjects.walls[data])
+    // console.log(data)
+    gameObjects.walls[data].destroy();
+    delete gameObjects.walls[data];
+  });
 }
 
 function update(){
@@ -240,7 +314,16 @@ function spawnBullet(self,data){
     gameObjects.bullets[data.id]=bullet
 }
 
-
+function createShopItem(d){
+  $(".items").append(`
+                <div class="shopItem" >
+                <p>Name:${d.name}</p>
+                <p>Damage:${d.damage}</p>
+                <p>Shoot Rate:${d.coolDown}</p>
+                <div class="buyButton buy" item=${d.name}>${d.price}$</div>
+                </div>`
+                )
+}
 function createPlayer(self,data){
   let  player = self.matter.add.image(data.x,data.y, 'circle',null,{inertia:Infinity});
     // player.setFriction(0.005);
@@ -248,6 +331,7 @@ function createPlayer(self,data){
     player.setScale(0.1,0.1)
     player.setOrigin(0.5,0.5);
     player.money=0;
+    player.inventorySlots=data.inventorySlots;
   // let point= this.add.image(400,200, 'star');
   player.point=self.add.image(data.x,data.y, 'star');
   if(data.team=="red") player.setTint(0xff0000)
@@ -255,14 +339,17 @@ function createPlayer(self,data){
   self.player=player;
   return player;
 }
-function spawnWall(self,x,y,w,h){
-  let wall = self.matter.add.sprite(x,y, 'ground');
+function spawnWall(self,x,y,w,h,id){
+  // console.log(id)
+  let wall = self.matter.add.image(x,y, 'ground',null);
   wall.setStatic(true);
   wall.setScale(w/100, h/100);
   wall.setFriction(0.005);
+  gameObjects.walls[id]=wall;
+  // console.log(gameObjects)
 }
 function spawnBase(self,x,y,w,h){
-  
+
   let radius = self.add.image(x,y, 'tile',null);
   // console.log(r/radius.width,r/radius.height,radius.height,radius.width,r)
   // radius.setScale(r/radius.width,r/radius.height);
@@ -285,6 +372,13 @@ function changeSize(object,w,h){
     object.width=w;
     object.displayWidth=w;
   }
+}
+function updateShopButtons(socket){
+  $(".sell").on("click",function(){
+    let item=$(this).attr("item")
+    console.log(item)
+    socket.emit("sellItem",item)
+   });
 }
 // function create ()
 // {
