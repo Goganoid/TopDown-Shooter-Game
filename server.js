@@ -4,8 +4,11 @@ var server= require("http").Server(app);
 var io = require("socket.io").listen(server);
 var Matter = require('matter-js/build/matter.js');
 var gameObjects={players:{},bullets:{},walls:{},bases:{}};
+var playersInTeams={
+    "red":0,
+    "blue":0
+}
 var Weapon= function(name,damage,coolDown,ammo,clipSize,price,reloadTime,ammoPrice){
-//    let obj=s{}
     this.name=name;
     this.damage=damage;
     this.coolDown=coolDown;
@@ -19,11 +22,9 @@ var Weapon= function(name,damage,coolDown,ammo,clipSize,price,reloadTime,ammoPri
     this.reloadTime=reloadTime;
     this.reloading=false;
     this.maxAmmo=ammo;
-    
     return this
 };
 
-// gameObjects.bullets
 var shopItems={
     "smth1": new Weapon("smth1",5,50,200,50,15,1000,10),
     "smth2": new Weapon("smth2",10,500,50,10,10,2000,5),
@@ -39,7 +40,7 @@ var ID = function () {
 
 // server launch  
 app.use(express.static(__dirname + '/public'));
-app.get("/", function (req,res) {
+app.get("/", function (res) {
     res.sendFile(__dirname +"public/index.html")
 });
 io.sockets.setMaxListeners(20);
@@ -52,29 +53,31 @@ server.listen(3000, function () {
 
 
 var engine = Matter.Engine.create();
-
+engine.world.gravity.y = 0;
 createBase({x:200,y:300},130,130,"blue")
 createBase({x:1200,y:300},130,130,"red")
 createWall({x:400,y:610},1000,32);
-var ground1 = Matter.Bodies.rectangle(0, 0, 10000, 1, { isStatic: true });
-var ground2 = Matter.Bodies.rectangle(0, 0, 1, 10000, { isStatic: true });
+
 
 var playerRadius=44.35;
 var movementSpeed=10;
 
 
+//create world borders
+Matter.World.add(engine.world, [
+    Matter.Bodies.rectangle(0, 0, 48000, 1, { isStatic: true }),
+    Matter.Bodies.rectangle(0, 4800, 48000, 1, { isStatic: true }),
+    Matter.Bodies.rectangle(0, 0, 1, 48000, { isStatic: true }),
+    Matter.Bodies.rectangle(4800, 0, 1, 48000, { isStatic: true }),
+]);
 
-Matter.World.add(engine.world, [ground1,ground2]);
-engine.world.gravity.y = 0;
 
     // launch game cycle
     setInterval(function(){
         Matter.Engine.update(engine, engine.timing.delta);
     },1000/60)
 Matter.Events.on(engine,"collisionStart",function(event){
-    // console.log(event.pairs[0].bodyA.id,event.pairs[0].bodyB.playerId)
-    // console.log(event.pairs[0].bodyB.gameObjectType)
-    // console.log("###############")
+    
         if(event.pairs[0].bodyB.gameObjectType=="bullet") {
                 if(event.pairs[0].bodyA.health){ 
                  if(event.pairs[0].bodyA.team!=event.pairs[0].bodyB.team && event.pairs[0].bodyA.gameObjectType=="player") event.pairs[0].bodyA.changeHealthOn(event.pairs[0].bodyB.damage,event.pairs[0].bodyB.playerId)
@@ -111,20 +114,19 @@ io.on('connection', function (socket) {
         
     });
     socket.on("updatePLayer",function(data){
-
         Matter.Body.setVelocity(socket.player.body,{x:0,y:0})
-
         socket.player.keys.left=data.left;
         socket.player.keys.right=data.right;
         socket.player.keys.up=data.up;
         socket.player.keys.down=data.down;
 
         let body=socket.player.body;
+
         if (data.right) Matter.Body.setVelocity( body,{x:movementSpeed,y:body.velocity.y});
         if (data.left) Matter.Body.setVelocity(body,{x:-movementSpeed,y:body.velocity.y});
         if (data.up) Matter.Body.setVelocity(body,{x:body.velocity.x,y:-movementSpeed});
         if (data.down) Matter.Body.setVelocity(body,{x:body.velocity.x,y:movementSpeed});
-         io.emit("sendPlayerData",{position:body.position,id:socket.id,rotation:data.rotation});
+        io.emit("sendPlayerData",{position:body.position,id:socket.id,rotation:data.rotation});
     });
     socket.on("numberPressed",function(data){
         if(socket.player.body.inventorySlots[data]!=undefined){
@@ -132,7 +134,7 @@ io.on('connection', function (socket) {
             socket.player.body.weapon=socket.player.body.inventorySlots[data]
             socket.emit("numberPressed",{data:socket.player.body.inventorySlots[data],index:data})
         }
-        else if( socket.player.body.weapon!=socket.player.body.inventorySlots[data]  ) {
+        else if( socket.player.body.weapon!=socket.player.body.inventorySlots[data]) {
             clearTimeout(socket.player.body.shootTimeout);
             socket.player.body.weapon.canShoot=true;
             socket.player.body.weapon.reloading=false;
@@ -151,18 +153,15 @@ io.on('connection', function (socket) {
                 for(let d of Object.keys(player.body.inventorySlots)){
                     if(player.body.inventorySlots[d]==undefined){
                         socket.player.body.money-=shopItems[data].price;
-                        // player.body.inventorySlots[d]=shopItems[data];
                         player.body.inventorySlots[d]=Object.assign({},shopItems[data]);
                         socket.emit("bought",{item:player.body.inventorySlots[d],slot:d});
                         break;
-
                     }
-                };
+                }
             }
         }
     });
     socket.on("buyAmmo",function(data){
-        console.log(player.body.inventorySlots[data].ammoPrice)
         if(socket.player.body.money>=player.body.inventorySlots[data].ammoPrice && nearBase(socket) && player.body.inventorySlots[data].ammo!= player.body.inventorySlots[data].maxAmmo ){
             player.body.inventorySlots[data].ammo= player.body.inventorySlots[data].maxAmmo;
             socket.player.body.money-=player.body.inventorySlots[data].ammoPrice;
@@ -199,7 +198,7 @@ io.on('connection', function (socket) {
         if(socket.player.body.weapon.currClip!=0 && socket.player.body.weapon.reloading==false){ 
             if(socket.player.body.weapon.canShoot==true) {
                 socket.player.body.weapon.currClip-=1;
-                createBullet(socket,data,socket.player.body.weapon.currClip);
+                createBullet(socket,data,socket.player.body.weapon.currClip,socket.player.body.weapon.damage);
                 socket.player.body.weapon.canShoot=false;
                 socket.player.body.shootTimeout= setTimeout(
                     ()=>{
@@ -209,7 +208,7 @@ io.on('connection', function (socket) {
             }
         }
       
-        else if(socket.player.body.weapon.reloading==false){  reload(socket)}
+        else if(socket.player.body.weapon.reloading==false) reload(socket)
     }
    
     });
@@ -218,12 +217,9 @@ io.on('connection', function (socket) {
     });
 
     socket.on('disconnect', function () {
-        Matter.Composite.remove(engine.world, socket.player.body)
-        delete gameObjects.players[socket.id];
-        // delete socket.player
-        // delete socket.player;
-        io.emit("removePlayer",socket.id)
-
+        playersInTeams[ socket.player.body.team]-=1;
+        socket.player.body.remove();
+        
         });
     });
 
@@ -239,7 +235,6 @@ function allPLayersPositions(thisPlayerId){
         team:gameObjects.players[id].body.team
       }
     });
-    // console.log(positions);
     return positions;
   }
 function nearBase(socket){
@@ -252,7 +247,8 @@ function nearBase(socket){
     return nearBase
   }
 function createPlayer(socket){
-    let base=getRandomBase();
+    let base=getBase();
+    playersInTeams[base]+=1;
     let player = {body:Matter.Bodies.circle(gameObjects.bases[base].body.position.x+200, 200, playerRadius),id:socket.id,keys:{
         left:false,
         right:false,
@@ -284,26 +280,31 @@ function createPlayer(socket){
     Matter.World.add(engine.world, player.body);
 
     player.body.health=100;
-
+    player.body.remove=function(killerData){
+        
+        if(killerData) io.emit("removePlayer",killerData)
+        else io.emit("removePlayer",socket.id)
+        
+        Matter.Composite.remove(engine.world, player.body)
+        delete gameObjects.players[socket.id];
+    };
     player.body.changeHealthOn=function(h,id){
             this.health-=h;
+            
             if(this.health<=0) {
                 gameObjects.players[id].body.money+=100;
                 gameObjects.players[id].body.score+=100;
                 gameObjects.players[id].body.kills+=1;
                 socket.player.body.score-= socket.player.body.score>=100 ? 100 : socket.player.body.score  ;
                 socket.player.body.killed+=1;
-                console.log(player.id)
-                socket.emit("dead")
-                io.emit("removePlayer",{
-                    dead:player.id,
-                    killer:id,
-                    killerScore: gameObjects.players[id].body.score,
-                    deadScore:socket.player.body.score,
-                    killerKills: gameObjects.players[id].body.kills,
-                    deadKilled:socket.player.body.killed});
-                Matter.Composite.remove(engine.world,player.body);
-                delete gameObjects.players[player.id];
+                socket.emit("dead");
+                player.body.remove({
+                        dead:player.id,
+                        killer:id,
+                        killerScore: gameObjects.players[id].body.score,
+                        deadScore:socket.player.body.score,
+                        killerKills: gameObjects.players[id].body.kills,
+                        deadKilled:socket.player.body.killed});
             }
             else socket.emit("changeHealth",this.health)
     };
@@ -326,8 +327,6 @@ function createWall(position,w,h,health){
     }
     wall.body.health=health;
     wall.body.changeHealthOn=function(h){
-        // this.prevHealth-=h/2;
-        // if(this.prevHealth==this.health-h) {
             this.health-=h;
             if(this.health<=0) {
                 io.emit("destroyWall",wall.id);
@@ -335,7 +334,6 @@ function createWall(position,w,h,health){
                 delete gameObjects.walls[wall.id];
             }
         };
-    // }
     wall.body.gameObjectType="wall";
     Matter.World.add(engine.world, wall.body);
     gameObjects.walls[wall.id]=wall;
@@ -374,12 +372,11 @@ function createBase(position,w,h,team){
     base.body.gameObjectType="base";
     Matter.World.add(engine.world, [base.body,interactiveRadius]);
     gameObjects.bases[team]=base;
-    // console.log(calculateVertices(200,300,230,230))
     io.emit( "spawnBase",{x:base.body.position.x,y:base.body.position.y,w:w,h:h} );
     return base
 
 }
-function createBullet(socket,mousePosition,clip){
+function createBullet(socket,mousePosition,clip,damage){
     let playerBody=gameObjects.players[socket.id].body;
     let angle=Matter.Vector.angle(playerBody.position, mousePosition);
     let shootPoint={
@@ -399,12 +396,10 @@ function createBullet(socket,mousePosition,clip){
     bullet.body.team=playerBody.team;
     bullet.body.playerId=socket.player.id;
     bullet.body.gameObjectType="bullet";
-    bullet.body.damage=10;
+    bullet.body.damage=damage;
     bullet.body.isSensor=true;
     Matter.World.add(engine.world, bullet.body);
 
-    // if(!gameObjects.bullets[socket.id]) gameObjects.bullets[socket.id]=[]
-    // else gameObjects.bullets[socket.id].push(bullet);
     Matter.Body.setMass(bullet.body,0.1)
     Matter.Body.setVelocity(bullet.body,{x: Math.cos(angle)*20,y:Math.sin(angle)*20})
     io.emit( "bulletSpawned",{ 
@@ -444,8 +439,11 @@ function reload(socket){
                 socket.player.body.weapon.reloadTime
             )
 
-            // if(socket.player.body.weapon.ammo!=0)
             socket.emit("reload",socket.player.body.weapon.reloadTime)
+            }
+            else{
+                socket.player.body.weapon.canShoot=true;
+                socket.player.body.weapon.reloading=false;
             }
         }
     }
@@ -468,59 +466,11 @@ function createArrayOfObjects(objects,type){
 function calculateVertices(x,y,w,h){
     return [ {x:x-w/2,y:y-h/2},{x:x+w/2,y:y-h/2},{x:x-w/2,y:y+h/2},{x:x+w/2,y:y+h/2}  ]
 }
-function getRandomBase(player){
-    let r=getRandomInt(0,2);
-    if(r==0) return "blue";
-    else  return "red";
+function getBase(){
+    if(playersInTeams.red==playersInTeams.blue) return getRandomInt(0,2)==0 ? "blue" : "red"
+    else return playersInTeams.red>playersInTeams.blue ? "blue" : "red"
 }
 
 function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min)) + min;
   }
-
-//   function reload(socket){
-//     clearTimeout(socket.player.body.shootTimeout);
-//     socket.player.body.weapon.canShoot=false;
-//     socket.player.body.weapon.reloading=true;
-//     socket.player.body.shootTimeout=setTimeout(
-//         ()=>{
-//             socket.player.body.weapon.canShoot=true;
-//             socket.player.body.weapon.reloading=false;
-//             if(socket.player.body.weapon.ammo<socket.player.body.weapon.clipSize){
-//                 socket.player.body.weapon.currClip=socket.player.body.weapon.ammo;
-//                 socket.player.body.weapon.ammo=0;
-//             }
-//             else{
-//             socket.player.body.weapon.ammo-=socket.player.body.weapon.clipSize;
-//             socket.player.body.weapon.currClip=socket.player.body.weapon.clipSize;
-//             }
-            
-//             socket.emit("reloaded",socket.player.body.weapon)
-//         },
-//         socket.player.body.weapon.reloadTime
-//     )
-
-//     if(socket.player.body.weapon.ammo!=0)  socket.emit("reload",socket.player.body.weapon.reloadTime)
-// }
-    // clearTimeout(socket.player.body.shootTimeout);
-            // socket.player.body.weapon.canShoot=false;
-            // socket.player.body.weapon.reloading=true;
-            // socket.player.body.shootTimeout=setTimeout(
-            //     ()=>{
-            //         socket.player.body.weapon.canShoot=true;
-            //         socket.player.body.weapon.reloading=false;
-            //         if(socket.player.body.weapon.ammo<socket.player.body.weapon.clipSize){
-            //             socket.player.body.weapon.currClip=socket.player.body.weapon.ammo;
-            //             socket.player.body.weapon.ammo=0;
-            //         }
-            //         else{
-            //         socket.player.body.weapon.ammo-=socket.player.body.weapon.clipSize;
-            //         socket.player.body.weapon.currClip=socket.player.body.weapon.clipSize;
-            //         }
-                    
-            //         socket.emit("reloaded",socket.player.body.weapon)
-            //     },
-            //     socket.player.body.weapon.reloadTime
-            // )
-
-            // if(socket.player.body.weapon.ammo!=0)  socket.emit("reload",socket.player.body.weapon.reloadTime)
