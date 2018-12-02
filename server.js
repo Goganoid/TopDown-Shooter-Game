@@ -99,6 +99,7 @@ Matter.Events.on(engine,"collisionStart",function(event){
 });
 io.on('connection', function (socket) {
     let player=createPlayer(socket);
+    let playerBody=socket.player.body;
     socket.on("connected",function(){
         let bases=createArrayOfObjects(gameObjects.bases,"base");
         socket.emit("spawnBase",bases);
@@ -114,32 +115,32 @@ io.on('connection', function (socket) {
         
     });
     socket.on("updatePLayer",function(data){
-        Matter.Body.setVelocity(socket.player.body,{x:0,y:0})
+        Matter.Body.setVelocity(playerBody,{x:0,y:0})
         socket.player.keys.left=data.left;
         socket.player.keys.right=data.right;
         socket.player.keys.up=data.up;
         socket.player.keys.down=data.down;
 
-        let body=socket.player.body;
 
-        if (data.right) Matter.Body.setVelocity( body,{x:movementSpeed,y:body.velocity.y});
-        if (data.left) Matter.Body.setVelocity(body,{x:-movementSpeed,y:body.velocity.y});
-        if (data.up) Matter.Body.setVelocity(body,{x:body.velocity.x,y:-movementSpeed});
-        if (data.down) Matter.Body.setVelocity(body,{x:body.velocity.x,y:movementSpeed});
-        io.emit("sendPlayerData",{position:body.position,id:socket.id,rotation:data.rotation});
+        if (data.right) Matter.Body.setVelocity( playerBody,{x:movementSpeed,y:playerBody.velocity.y});
+        if (data.left) Matter.Body.setVelocity(playerBody,{x:-movementSpeed,y:playerBody.velocity.y});
+        if (data.up) Matter.Body.setVelocity(playerBody,{x:playerBody.velocity.x,y:-movementSpeed});
+        if (data.down) Matter.Body.setVelocity(playerBody,{x:playerBody.velocity.x,y:movementSpeed});
+        io.emit("sendPlayerData",{position:playerBody.position,id:socket.id,rotation:data.rotation});
     });
     socket.on("numberPressed",function(data){
-        if(socket.player.body.inventorySlots[data]!=undefined){
-        if(socket.player.body.weapon==undefined){
-            socket.player.body.weapon=socket.player.body.inventorySlots[data]
-            socket.emit("numberPressed",{data:socket.player.body.inventorySlots[data],index:data})
+        // let player=socket.player.body;
+        if(playerBody.inventorySlots[data]!=undefined){
+        if(playerBody.weapon==undefined){
+            playerBody.weapon=playerBody.inventorySlots[data]
+            socket.emit("numberPressed",{data:playerBody.inventorySlots[data],index:data})
         }
-        else if( socket.player.body.weapon!=socket.player.body.inventorySlots[data]) {
-            clearTimeout(socket.player.body.shootTimeout);
-            socket.player.body.weapon.canShoot=true;
-            socket.player.body.weapon.reloading=false;
-            socket.player.body.weapon=socket.player.body.inventorySlots[data]
-            socket.emit("numberPressed",{data:socket.player.body.inventorySlots[data],index:data})
+        else if( playerBody.weapon!=playerBody.inventorySlots[data]) {
+            clearTimeout(playerBody.shootTimeout);
+            playerBody.weapon.canShoot=true;
+            playerBody.weapon.reloading=false;
+            playerBody.weapon=playerBody.inventorySlots[data]
+            socket.emit("numberPressed",{data:playerBody.inventorySlots[data],index:data})
         }
 
     }
@@ -148,11 +149,11 @@ io.on('connection', function (socket) {
         reload(socket)
     });
     socket.on("buyItem",function(data){
-        if(socket.player.body.money>=shopItems[data].price && nearBase(socket)){
+        if(playerBody.money>=shopItems[data].price && nearBase(socket)){
             if(Object.values(player.body.inventorySlots).filter(slot=> slot==undefined).length!=0 && Object.values(player.body.inventorySlots).indexOf(shopItems[data])==-1){
                 for(let d of Object.keys(player.body.inventorySlots)){
                     if(player.body.inventorySlots[d]==undefined){
-                        socket.player.body.money-=shopItems[data].price;
+                        playerBody.money-=shopItems[data].price;
                         player.body.inventorySlots[d]=Object.assign({},shopItems[data]);
                         socket.emit("bought",{item:player.body.inventorySlots[d],slot:d});
                         break;
@@ -162,21 +163,21 @@ io.on('connection', function (socket) {
         }
     });
     socket.on("buyAmmo",function(data){
-        if(socket.player.body.money>=player.body.inventorySlots[data].ammoPrice && nearBase(socket) && player.body.inventorySlots[data].ammo!= player.body.inventorySlots[data].maxAmmo ){
+        if(playerBody.money>=player.body.inventorySlots[data].ammoPrice && nearBase(socket) && player.body.inventorySlots[data].ammo!= player.body.inventorySlots[data].maxAmmo ){
             player.body.inventorySlots[data].ammo= player.body.inventorySlots[data].maxAmmo;
-            socket.player.body.money-=player.body.inventorySlots[data].ammoPrice;
+            playerBody.money-=player.body.inventorySlots[data].ammoPrice;
             socket.emit("ammoRefilled", {ammo:player.body.inventorySlots[data].ammo,slot:data})
         }
     });
     socket.on("sellItem",function(data){
             if(nearBase(socket)){
                 if(player.body.inventorySlots[data]!=undefined){
-                    socket.player.body.money+=shopItems[player.body.inventorySlots[data].name].sellPrice;
-                    if(socket.player.body.weapon!=undefined){
-                    if(socket.player.body.weapon.name == player.body.inventorySlots[data].name){
+                    playerBody.money+=shopItems[player.body.inventorySlots[data].name].sellPrice;
+                    if(playerBody.weapon!=undefined){
+                    if(playerBody.weapon.name == player.body.inventorySlots[data].name){
                         socket.emit("sold",[data,true])
-                        clearTimeout(socket.player.body.shootTimeout);
-                        socket.player.body.weapon=undefined;
+                        clearTimeout(playerBody.shootTimeout);
+                        playerBody.weapon=undefined;
                     }
                     else{
                         socket.emit("sold",[data,false])
@@ -193,22 +194,22 @@ io.on('connection', function (socket) {
     });
    
     socket.on("spawnBullet",function(data){
-        if(socket.player.body.weapon!=undefined){
+        if(playerBody.weapon!=undefined){
            
-        if(socket.player.body.weapon.currClip!=0 && socket.player.body.weapon.reloading==false){ 
-            if(socket.player.body.weapon.canShoot==true) {
-                socket.player.body.weapon.currClip-=1;
-                createBullet(socket,data,socket.player.body.weapon.currClip,socket.player.body.weapon.damage);
-                socket.player.body.weapon.canShoot=false;
-                socket.player.body.shootTimeout= setTimeout(
+        if(playerBody.weapon.currClip!=0 && playerBody.weapon.reloading==false){ 
+            if(playerBody.weapon.canShoot==true) {
+                playerBody.weapon.currClip-=1;
+                createBullet(socket,data,playerBody.weapon.currClip,playerBody.weapon.damage);
+                playerBody.weapon.canShoot=false;
+                playerBody.shootTimeout= setTimeout(
                     ()=>{
-                        socket.player.body.weapon.canShoot=true
+                        playerBody.weapon.canShoot=true
                     },
-                    socket.player.body.weapon.coolDown)
+                    playerBody.weapon.coolDown)
             }
         }
       
-        else if(socket.player.body.weapon.reloading==false) reload(socket)
+        else if(playerBody.weapon.reloading==false) reload(socket)
     }
    
     });
@@ -217,8 +218,8 @@ io.on('connection', function (socket) {
     });
 
     socket.on('disconnect', function () {
-        playersInTeams[ socket.player.body.team]-=1;
-        socket.player.body.remove();
+        playersInTeams[ playerBody.team]-=1;
+        playerBody.remove();
         
         });
     });
@@ -238,11 +239,12 @@ function allPLayersPositions(thisPlayerId){
     return positions;
   }
 function nearBase(socket){
-    let playerpos=socket.player.body.position;
-    let shapes=calculateVertices(gameObjects.bases[socket.player.body.team].body.position.x,
-                                 gameObjects.bases[socket.player.body.team].body.position.y,
-                                 gameObjects.bases[socket.player.body.team].body.interactiveRadius,
-                                 gameObjects.bases[socket.player.body.team].body.interactiveRadius);
+    let playerBody=socket.player.body;
+    let playerpos=playerBody.position;
+    let shapes=calculateVertices(gameObjects.bases[playerBody.team].body.position.x,
+                                 gameObjects.bases[playerBody.team].body.position.y,
+                                 gameObjects.bases[playerBody.team].body.interactiveRadius,
+                                 gameObjects.bases[playerBody.team].body.interactiveRadius);
     let nearBase=playerpos.x>=shapes[0].x && playerpos.x<=shapes[1].x && playerpos.y>=shapes[0].y && playerpos.y<=shapes[2].y;
     return nearBase
   }
@@ -255,6 +257,7 @@ function createPlayer(socket){
         up:false,
         down:false,
     }};
+    let playerBody=player.body;
     player.body.inventorySlots={
         1: Object.assign({},shopItems["smth1"]),
         2: Object.assign({},shopItems["smth2"]),
@@ -295,16 +298,16 @@ function createPlayer(socket){
                 gameObjects.players[id].body.money+=100;
                 gameObjects.players[id].body.score+=100;
                 gameObjects.players[id].body.kills+=1;
-                socket.player.body.score-= socket.player.body.score>=100 ? 100 : socket.player.body.score  ;
-                socket.player.body.killed+=1;
+                playerBody.score-= playerBody.score>=100 ? 100 : playerBody.score  ;
+                playerBody.killed+=1;
                 socket.emit("dead");
                 player.body.remove({
                         dead:player.id,
                         killer:id,
                         killerScore: gameObjects.players[id].body.score,
-                        deadScore:socket.player.body.score,
+                        deadScore:playerBody.score,
                         killerKills: gameObjects.players[id].body.kills,
-                        deadKilled:socket.player.body.killed});
+                        deadKilled:player.body.killed});
             }
             else socket.emit("changeHealth",this.health)
     };
@@ -410,40 +413,41 @@ function createBullet(socket,mousePosition,clip,damage){
         owner:socket.id } )
 }
 function reload(socket){
-    if(socket.player.body.weapon!=undefined){
-        if(socket.player.body.weapon.currClip!=socket.player.body.weapon.clipSize && !socket.player.body.weapon.reloading){
-            clearTimeout(socket.player.body.shootTimeout);
-            socket.player.body.weapon.canShoot=false;
-            socket.player.body.weapon.reloading=true;
+    let playerBody=socket.player.body;
+    if(playerBody.weapon!=undefined){
+        if(playerBody.weapon.currClip!=playerBody.weapon.clipSize && !playerBody.weapon.reloading){
+            clearTimeout(playerBody.shootTimeout);
+            playerBody.weapon.canShoot=false;
+            playerBody.weapon.reloading=true;
 
             
-            socket.player.body.weapon.ammo+=socket.player.body.weapon.currClip;
-            socket.player.body.weapon.currClip=0;
+            playerBody.weapon.ammo+=playerBody.weapon.currClip;
+            playerBody.weapon.currClip=0;
 
-            if(socket.player.body.weapon.ammo!=0 ){
+            if(playerBody.weapon.ammo!=0 ){
             
-            socket.player.body.shootTimeout=setTimeout(
+            playerBody.shootTimeout=setTimeout(
                 ()=>{
-                    socket.player.body.weapon.canShoot=true;
-                    socket.player.body.weapon.reloading=false;
-                    if(socket.player.body.weapon.ammo<socket.player.body.weapon.clipSize){
-                        socket.player.body.weapon.currClip=socket.player.body.weapon.ammo;
-                        socket.player.body.weapon.ammo=0;
+                    playerBody.weapon.canShoot=true;
+                    playerBody.weapon.reloading=false;
+                    if(playerBody.weapon.ammo<playerBody.weapon.clipSize){
+                        playerBody.weapon.currClip=playerBody.weapon.ammo;
+                        playerBody.weapon.ammo=0;
                     }
                     else{
-                    socket.player.body.weapon.ammo-=socket.player.body.weapon.clipSize;
-                    socket.player.body.weapon.currClip=socket.player.body.weapon.clipSize;
+                    playerBody.weapon.ammo-=playerBody.weapon.clipSize;
+                    playerBody.weapon.currClip=playerBody.weapon.clipSize;
                     }
-                    socket.emit("reloaded",socket.player.body.weapon)
+                    socket.emit("reloaded",playerBody.weapon)
                 },
-                socket.player.body.weapon.reloadTime
+                playerBody.weapon.reloadTime
             )
 
-            socket.emit("reload",socket.player.body.weapon.reloadTime)
+            socket.emit("reload",playerBody.weapon.reloadTime)
             }
             else{
-                socket.player.body.weapon.canShoot=true;
-                socket.player.body.weapon.reloading=false;
+                playerBody.weapon.canShoot=true;
+                playerBody.weapon.reloading=false;
             }
         }
     }
